@@ -28,7 +28,6 @@ load(
 load(
     "@prelude//haskell:toolchain.bzl",
     "HaskellToolchainInfo",
-    "HaskellToolchainLibrary",
     "DynamicHaskellPackageDbInfo",
     "HaskellPackageDbTSet",
     "NativeToolchainLibrary",
@@ -38,7 +37,6 @@ load(
     "attr_deps",
     "attr_deps_haskell_lib_infos",
     "attr_deps_haskell_link_infos",
-    "attr_deps_haskell_toolchain_libraries",
     "get_artifact_suffix",
     "get_source_prefixes",
     "is_haskell_boot",
@@ -176,6 +174,7 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
     packages_info = get_packages_info2(
         actions,
         arg.deps,
+        arg.toolchain_libs,
         arg.direct_deps_link_info,
         arg.haskell_toolchain,
         arg.haskell_direct_deps_lib_infos,
@@ -301,7 +300,7 @@ def target_metadata(
     pkgname = libname.replace("_", "-")
 
     haskell_toolchain = ctx.attrs._haskell_toolchain[HaskellToolchainInfo]
-    toolchain_libs = [dep.name for dep in attr_deps_haskell_toolchain_libraries(ctx)]
+    toolchain_libs = ctx.attrs.toolchain_libs
 
     haskell_direct_deps_lib_infos = attr_deps_haskell_lib_infos(
         ctx,
@@ -384,6 +383,7 @@ def get_packages_info(
     return get_packages_info2(
         actions = ctx.actions,
         deps = [],
+        direct_toolchain_libs = [],
         direct_deps_link_info = attr_deps_haskell_link_infos(ctx),
         haskell_toolchain = haskell_toolchain,
         haskell_direct_deps_lib_infos = haskell_direct_deps_lib_infos,
@@ -395,18 +395,18 @@ def get_packages_info(
     )
 
 def get_packages_info2(
-    actions: AnalysisActions,
-    deps: list[Dependency],
-    direct_deps_link_info: list[HaskellLinkInfo],
-    haskell_toolchain: HaskellToolchainInfo,
-    haskell_direct_deps_lib_infos: list[HaskellLibraryInfo],
-    link_style: LinkStyle,
-    specify_pkg_version: bool,
-    enable_profiling: bool,
-    use_empty_lib: bool,
-    pkg_deps: ResolvedDynamicValue | None,
-    for_deps: bool = False) -> PackagesInfo:
-
+        actions: AnalysisActions,
+        deps: list[Dependency],
+        direct_toolchain_libs: list[str],
+        direct_deps_link_info: list[HaskellLinkInfo],
+        haskell_toolchain: HaskellToolchainInfo,
+        haskell_direct_deps_lib_infos: list[HaskellLibraryInfo],
+        link_style: LinkStyle,
+        specify_pkg_version: bool,
+        enable_profiling: bool,
+        use_empty_lib: bool,
+        pkg_deps: ResolvedDynamicValue | None,
+        for_deps: bool = False) -> PackagesInfo:
     # Collect library dependencies. Note that these don't need to be in a
     # particular order.
     libs = actions.tset(
@@ -446,12 +446,6 @@ def get_packages_info2(
         package_db = pkg_deps.providers[DynamicHaskellPackageDbInfo].packages
     else:
         package_db = {}
-
-    direct_toolchain_libs = [
-        dep[HaskellToolchainLibrary].name
-        for dep in deps
-        if HaskellToolchainLibrary in dep
-    ]
 
     toolchain_libs = direct_toolchain_libs + libs.reduce("packages")
 
@@ -495,26 +489,25 @@ def add_worker_args(
         command.add("--worker-target-id", pkgname)
 
 def _common_compile_module_args(
-    actions: AnalysisActions,
-    *,
-    compiler_flags: list[ArgLike],
-    ghc_wrapper: RunInfo,
-    haskell_toolchain: HaskellToolchainInfo,
-    pkg_deps: ResolvedDynamicValue | None,
-    enable_haddock: bool,
-    enable_profiling: bool,
-    link_style: LinkStyle,
-    main: None | str,
-    label: Label,
-    deps: list[Dependency],
-    external_tool_paths: list[RunInfo],
-    extra_libraries: list[Dependency],
-    sources: list[Artifact],
-    direct_deps_info: list[HaskellLibraryInfoTSet],
-    allow_worker: bool,
-    pkgname: str | None = None,
-) -> CommonCompileModuleArgs:
-
+        actions: AnalysisActions,
+        *,
+        compiler_flags: list[ArgLike],
+        ghc_wrapper: RunInfo,
+        haskell_toolchain: HaskellToolchainInfo,
+        pkg_deps: ResolvedDynamicValue | None,
+        enable_haddock: bool,
+        enable_profiling: bool,
+        link_style: LinkStyle,
+        main: None | str,
+        label: Label,
+        deps: list[Dependency],
+        direct_toolchain_libs: list[str],
+        external_tool_paths: list[RunInfo],
+        extra_libraries: list[Dependency],
+        sources: list[Artifact],
+        direct_deps_info: list[HaskellLibraryInfoTSet],
+        allow_worker: bool,
+        pkgname: str | None = None) -> CommonCompileModuleArgs:
     command = cmd_args(ghc_wrapper)
     command.add("--ghc", haskell_toolchain.compiler)
     command.add("--ghc-dir", haskell_toolchain.ghc_dir)
@@ -574,11 +567,6 @@ def _common_compile_module_args(
 
     libs = actions.tset(HaskellLibraryInfoTSet, children = direct_deps_info)
 
-    direct_toolchain_libs = [
-        dep[HaskellToolchainLibrary].name
-        for dep in deps
-        if HaskellToolchainLibrary in dep
-    ]
     toolchain_libs = direct_toolchain_libs + libs.reduce("packages")
 
     if haskell_toolchain.packages:
@@ -631,30 +619,30 @@ def _common_compile_module_args(
     )
 
 def _compile_module(
-    actions: AnalysisActions,
-    *,
-    common_args: CommonCompileModuleArgs,
-    link_style: LinkStyle,
-    enable_profiling: bool,
-    enable_th: bool,
-    haskell_toolchain: HaskellToolchainInfo,
-    label: Label,
-    module_name: str,
-    module: _Module,
-    module_tsets: dict[str, CompiledModuleTSet],
-    md_file: Artifact,
-    graph: dict[str, list[str]],
-    package_deps: dict[str, list[str]],
-    outputs: dict[Artifact, OutputArtifact],
-    artifact_suffix: str,
-    direct_deps_by_name: dict[str, typing.Any],
-    toolchain_deps_by_name: dict[str, None],
-    aux_deps: None | list[Artifact],
-    src_envs: None | dict[str, ArgLike],
-    source_prefixes: list[str],
-    extra_libraries: list[Dependency],
-    worker: None | WorkerInfo,
-) -> CompiledModuleTSet:
+        actions: AnalysisActions,
+        *,
+        common_args: CommonCompileModuleArgs,
+        link_style: LinkStyle,
+        enable_profiling: bool,
+        enable_th: bool,
+        haskell_toolchain: HaskellToolchainInfo,
+        label: Label,
+        module_name: str,
+        module: _Module,
+        module_tsets: dict[str, CompiledModuleTSet],
+        md_file: Artifact,
+        graph: dict[str, list[str]],
+        package_deps: dict[str, list[str]],
+        outputs: dict[Artifact, OutputArtifact],
+        artifact_suffix: str,
+        direct_deps_by_name: dict[str, typing.Any],
+        toolchain_deps_by_name: list[str],
+        aux_deps: None | list[Artifact],
+        src_envs: None | dict[str, ArgLike],
+        source_prefixes: list[str],
+        extra_libraries: list[Dependency],
+        worker: None | WorkerInfo,
+        allow_worker: bool) -> CompiledModuleTSet:
     # These compiler arguments can be passed in a response file.
     compile_args_for_file = cmd_args(common_args.args_for_file, hidden = aux_deps or [])
 
@@ -827,6 +815,7 @@ def _dynamic_do_compile_impl(actions, md_file, pkg_deps, arg, direct_deps_by_nam
         actions,
         compiler_flags = arg.compiler_flags,
         deps = arg.deps,
+        direct_toolchain_libs = arg.toolchain_deps_by_name,
         external_tool_paths = arg.external_tool_paths,
         extra_libraries = arg.extra_libraries,
         ghc_wrapper = arg.ghc_wrapper,
@@ -920,10 +909,7 @@ def compile(
 
     # Collect library dependencies. Note that these don't need to be in a
     # particular order.
-    toolchain_deps_by_name = {
-        lib.name: None
-        for lib in attr_deps_haskell_toolchain_libraries(ctx)
-    }
+    toolchain_deps_by_name = ctx.attrs.toolchain_libs
     direct_deps_info = [
         lib.prof_info[link_style] if enable_profiling else lib.info[link_style]
         for lib in attr_deps_haskell_link_infos(ctx)
