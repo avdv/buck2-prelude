@@ -260,6 +260,8 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
             category = "haskell_metadata",
             identifier = arg.suffix if arg.suffix else None,
             weight = 8,
+            # explicit turn this on for local_only actions to upload their results.
+            allow_cache_upload = True,
         )
     else:
         actions.run(
@@ -267,6 +269,8 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
             category = "haskell_metadata",
             identifier = arg.suffix if arg.suffix else None,
             weight = 8,
+            # explicit turn this on for local_only actions to upload their results.
+            allow_cache_upload = True,
         )
 
     return []
