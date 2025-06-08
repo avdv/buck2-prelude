@@ -251,7 +251,6 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
             bp_args,
             category = "haskell_buildplan",
             identifier = arg.suffix if arg.suffix else None,
-            weight = 8,
             exe = WorkerRunInfo(worker = arg.worker),
         )
         md_args.add("--build-plan", build_plan)
@@ -259,7 +258,6 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
             md_args,
             category = "haskell_metadata",
             identifier = arg.suffix if arg.suffix else None,
-            weight = 8,
             # explicit turn this on for local_only actions to upload their results.
             allow_cache_upload = True,
         )
@@ -268,7 +266,6 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
             md_args,
             category = "haskell_metadata",
             identifier = arg.suffix if arg.suffix else None,
-            weight = 8,
             # explicit turn this on for local_only actions to upload their results.
             allow_cache_upload = True,
         )
