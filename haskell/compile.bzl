@@ -113,7 +113,6 @@ CompileResultInfo = record(
     hi = field(list[Artifact]),
     hie = field(list[Artifact]),
     stubs = field(Artifact),
-    hashes = field(list[Artifact]),
     producing_indices = field(bool),
     module_tsets = field(DynamicValue),
 )
@@ -134,7 +133,6 @@ _Module = record(
     name = field(str),
     source = field(Artifact),
     interfaces = field(list[Artifact]),
-    hash = field(Artifact | None),
     objects = field(list[Artifact]),
     hie_files = field(list[Artifact]),
     stub_dir = field(Artifact | None),
@@ -188,11 +186,6 @@ def _modules_by_name(ctx: AnalysisContext, *, sources: list[Artifact], link_styl
         else:
             hie_files = []
 
-        if ctx.attrs.incremental:
-            hash = ctx.actions.declare_output("mod-" + suffix, interface_path + ".hash")
-        else:
-            hash = None
-
         if link_style in [LinkStyle("static"), LinkStyle("static_pic")]:
             dyn_osuf, dyn_hisuf = output_extensions(LinkStyle("shared"), enable_profiling)
             interface_path = paths.replace_extension(short_path_stripped, "." + dyn_hisuf + bootsuf)
@@ -216,7 +209,6 @@ def _modules_by_name(ctx: AnalysisContext, *, sources: list[Artifact], link_styl
             name = module_name,
             source = src,
             interfaces = interfaces,
-            hash = hash,
             objects = objects,
             hie_files = hie_files,
             stub_dir = stub_dir,
@@ -944,7 +936,6 @@ def _wrapper_oneshot_args(
         label: Label,
         module_name: str,
         dependency_modules: CompiledModuleTSet,
-        outputs: dict[Artifact, OutputArtifact],
         src_envs: None | dict[str, ArgLike],
         packagedb_tag: ArtifactTag):
     args = cmd_args()
@@ -1010,11 +1001,11 @@ def _compile_make_args(
 def _shared_wrapper_args(
         tagged_dep_file: TaggedCommandLine | TaggedValue,
         module: _Module,
-        outputs: dict[Artifact, OutputArtifact],
-    ) -> cmd_args:
+        hash: Artifact) -> cmd_args:
     args = cmd_args()
     args.add("--buck2-dep", tagged_dep_file)
-    args.add("--abi-out", outputs[module.hash])
+    args.add("--abi-out", hash.as_output())
+
     return args
 
 def _compile_module(
@@ -1083,10 +1074,12 @@ def _compile_module(
 
     tagged_dep_file = abi_tag.tag_artifacts(dep_file)
 
+    hash = actions.declare_output("{}_{}.hash".format(module_name, artifact_suffix))
+
     # ----------------------------------------------------------------------------------------------------
 
     # These arguments for `ghc_wrapper`/the worker can be passed in a response file.
-    wrapper_args_for_file = _shared_wrapper_args(tagged_dep_file, module, outputs)
+    wrapper_args_for_file = _shared_wrapper_args(tagged_dep_file, module, hash)
 
     # These compiler arguments can be passed in a response file.
     compile_args_for_file = cmd_args(common_args.args_for_file, hidden = aux_deps or [])
@@ -1148,7 +1141,6 @@ def _compile_module(
             label = label,
             module_name = module_name,
             dependency_modules = dependency_modules,
-            outputs = outputs,
             src_envs = src_envs,
             packagedb_tag = packagedb_tag,
         ))
@@ -1203,7 +1195,7 @@ def _compile_module(
         value = CompiledModuleInfo(
             package = common_args.pkgname,
             name = module.name,
-            abi = module.hash,
+            abi = hash,
             interfaces = module.interfaces,
             hie_files = module.hie_files,
             db_deps = exposed_package_dbs,
@@ -1418,7 +1410,7 @@ def _make_module_tsets_non_incr(
         value = CompiledModuleInfo(
             name = name,
             package = pkgname,
-            abi = module.hash,
+            abi = None,
             interfaces = module.interfaces,
             hie_files = module.hie_files,
             db_deps = exposed_package_dbs,
@@ -1610,11 +1602,6 @@ def compile(
         for module in modules.values()
         if module.stub_dir != None
     ]
-    abi_hashes = [
-        module.hash
-        for module in modules.values()
-        if module.stub_dir != None
-    ]
 
     # Collect library dependencies. Note that these don't need to be in a
     # particular order.
@@ -1637,7 +1624,7 @@ def compile(
         incremental = incremental,
         md_file = md_file,
         pkg_deps = haskell_toolchain.packages.dynamic if haskell_toolchain.packages else None,
-        outputs = {o: o.as_output() for o in interfaces + objects + hie_files + stub_dirs + abi_hashes},
+        outputs = {o: o.as_output() for o in interfaces + objects + hie_files + stub_dirs},
         direct_deps_by_name = {
             info.value.name: (info.value.empty_db, info.value.dynamic[enable_profiling])
             for info in direct_deps_info
@@ -1717,7 +1704,6 @@ def compile(
     return CompileResultInfo(
         objects = objects,
         hi = interfaces,
-        hashes = abi_hashes,
         stubs = stubs_dir,
         hie = hie_files,
         producing_indices = False,
