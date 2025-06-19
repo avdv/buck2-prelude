@@ -1,0 +1,34 @@
+SOURCES = glob(
+    ["src/**/*.hs"],
+    exclude = ["src/MakeDeps.hs"],
+)
+
+haskell_binary(
+    name = "ghc-make-deps",
+    srcs = SOURCES,
+    compiler_flags = ["-O2"],
+    toolchain_libs = [
+        "base",
+        "containers",
+        "directory",
+        "filepath",
+        "ghc",
+        "os-string",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+    name = "sources",
+    srcs = SOURCES,
+    visibility = ["PUBLIC"],
+)
+
+[
+    export_file(
+        name = file,
+        mode = "reference",
+        visibility = ["PUBLIC"],
+    )
+    for file in SOURCES
+]
