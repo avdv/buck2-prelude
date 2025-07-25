@@ -248,7 +248,7 @@ def run_ghc_depends(cwd, ghc, ghc_args, sources, aux_paths, worker_target_id):
         res = subprocess.run(args, env=env, cwd=cwd, capture_output=True)
         if res.returncode != 0:
             # Write the GHC command on failure.
-            print(shlex.join(args_outer), file=sys.stderr)
+            print(ghc, shlex.join(args), file=sys.stderr)
 
         # Always forward stdout/stderr.
         # Note, Buck2 swallows stdout on successful builds.
