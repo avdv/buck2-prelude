@@ -20,6 +20,14 @@ def main():
         description=__doc__, add_help=False, fromfile_prefix_chars="@"
     )
     parser.add_argument(
+        "--abi", action="append", default=[], help="List of dependent ABI .hash files"
+    )
+    parser.add_argument(
+        "--abi-dep",
+        required=False,
+        help="Path to the ABI dep file.",
+    )
+    parser.add_argument(
         "--buck2-dep",
         required=False,
         help="Path to the dep file.",
@@ -174,6 +182,46 @@ def main():
         except Exception as e:
             # remove incomplete dep file
             os.remove(args.buck2_packagedb_dep)
+            raise e
+
+    if iface:
+        this_unit_id = get_ghc_arg(ghc_args, name = "-this-unit-id", required=True)
+
+        usages = set(
+            subprocess.check_output(
+                [
+                    args.ghc,
+                    "-W",
+                    "-package-env=-",
+                    "-package=ghc",
+                    "--run",
+                    "prelude/haskell/tools/get-usage.hs",
+                    "--",
+                    iface,
+                ],
+                text=True,
+            ).splitlines()
+        )
+
+    if args.abi_dep:
+        try:
+            with open(args.abi_dep, "w") as f:
+                for h in args.abi:
+                    # abi hash files follow a specific naming pattern: <unit_id>_<module_name>.hash FIXME
+                    unit_id, modname = os.path.splitext(os.path.basename(h))[0].split("_", 1)
+
+                    if unit_id == this_unit_id:
+                        # only home modules supported right now, other modules are always reported as used
+
+                        if f"{unit_id} {modname}" not in usages:
+                            print("unused:", unit_id, modname, f"({h})", file=sys.stderr)
+                            continue
+                    f.write(h + "\n")
+                if not args.abi:
+                    f.write("\n")
+        except Exception as e:
+            # remove incomplete dep file
+            os.remove(args.abi_dep)
             raise e
 
     return 0

@@ -1029,7 +1029,8 @@ def _compile_module(
     use_worker = allow_worker and haskell_toolchain.use_worker
     worker_make = use_worker and haskell_toolchain.worker_make
 
-    abi_tag = actions.artifact_tag()
+    interface_tag = actions.artifact_tag()  # tag for all hi files (these are never marked as used)
+    hash_tag = actions.artifact_tag()  # tag for ABI .hash files
     packagedb_tag = actions.artifact_tag()
 
     toolchain_deps = []
@@ -1063,10 +1064,11 @@ def _compile_module(
         CompiledModuleTSet,
         children = all_deps,
     )
+    tagged_hash_files = hash_tag.tag_artifacts(dependency_modules.project_as_args("abi"))
 
     dep_file = actions.declare_output("dep-{}_{}".format(module_name, artifact_suffix)).as_output()
 
-    tagged_dep_file = abi_tag.tag_artifacts(dep_file)
+    tagged_dep_file = interface_tag.tag_artifacts(dep_file)
 
     hash = actions.declare_output("{}_{}.hash".format(module_name, artifact_suffix))
 
@@ -1078,10 +1080,9 @@ def _compile_module(
     # These compiler arguments can be passed in a response file.
     compile_args_for_file = cmd_args(common_args.args_for_file, hidden = aux_deps or [])
 
-    compile_cmd_args = [common_args.command]
+    compile_cmd_args = [common_args.command, cmd_args(tagged_hash_files, prepend = "--abi")]
     compile_cmd_hidden = [
-        abi_tag.tag_artifacts(dependency_modules.project_as_args("interfaces")),
-        dependency_modules.project_as_args("abi"),
+        interface_tag.tag_artifacts(dependency_modules.project_as_args("interfaces")),
     ]
 
     # For the make worker, options related to local package dependencies need to be omitted entirely, since it uses the
@@ -1109,7 +1110,7 @@ def _compile_module(
             )
 
         dep_files = {
-            "abi": abi_tag,
+            "hi": interface_tag,
         }
     else:
         compile_args_for_file.add(common_args.oneshot_args_for_file)
@@ -1142,7 +1143,8 @@ def _compile_module(
         compile_cmd_args.append(common_args.oneshot_wrapper_args)
 
         dep_files = {
-            "abi": abi_tag,
+            "hi": interface_tag,
+            "hash": hash_tag,
             "packagedb": packagedb_tag,
         }
 
@@ -1173,6 +1175,11 @@ def _compile_module(
         worker_args = dict(exe = WorkerRunInfo(worker = worker))
     else:
         worker_args = dict()
+
+    abi_dep_file = actions.declare_output("used-abi-{}_{}".format(module_name, artifact_suffix)).as_output()
+    tagged_abi_dep_file = hash_tag.tag_artifacts(abi_dep_file)
+
+    compile_cmd.add("--abi-dep", tagged_abi_dep_file)
 
     actions.run(
         compile_cmd,
