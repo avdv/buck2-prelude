@@ -181,10 +181,14 @@ def determine_module_mapping(ghc_depends, source_prefix):
 def determine_module_graph(ghc_depends):
     module_deps = {}
     for modname, description in ghc_depends.items():
-        module_deps[modname] = description.get("modules", []) + [
+        deps = set(description.get("modules", []) + [
             dep + "-boot"
             for dep in description.get("modules-boot", [])
-        ]
+        ])
+
+        deps |= set(mod for mod in description["reexports"] if mod in ghc_depends)
+
+        module_deps[modname] = sorted(deps)
 
         boot_description = description.get("boot", None)
         if boot_description != None:
