@@ -314,8 +314,10 @@ processDeps dflags hsc_env excl_mods root hdl m_dep_json (AcyclicSCC (ModuleNode
     popts = initParserOpts (ms_hspp_opts node)
 #if __GLASGOW_HASKELL__ > 912
     mopts = map unLoc $ snd $ getOptions popts (supportedLanguagePragmas dflags) (fromJust $ ms_hspp_buf node) (ms_hspp_file node)
+    reexps = moduleNameString <$> ms_reexports node
 #else
     mopts = map unLoc $ snd $ getOptions popts (fromJust $ ms_hspp_buf node) (ms_hspp_file node)
+    reexports = []
 #endif
     dep_node =
         DepNode
@@ -325,6 +327,7 @@ processDeps dflags hsc_env excl_mods root hdl m_dep_json (AcyclicSCC (ModuleNode
             , dn_hi = msHiFileOsPath node
             , dn_boot = isBootSummary node
             , dn_options = Set.fromList mopts
+            , dn_reexports = Set.fromList reexps
             }
 
     preprocessor
@@ -442,7 +445,7 @@ writeDependencies include_pkgs root hdl suffixes node deps =
 
     suffixed f = insertSuffixes_ospath f suffixes
 
-    DepNode{dn_src, dn_obj, dn_hi, dn_boot} = node
+    DepNode{dn_src, dn_obj, dn_hi, dn_boot, dn_reexports} = node
 
 #if __GLASGOW_HASKELL__ > 912
     addBootSuffix_maybe' IsBoot = addBootSuffix

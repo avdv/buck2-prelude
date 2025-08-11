@@ -145,6 +145,7 @@ data DepNode
     , dn_hi :: OsPath
     , dn_boot :: IsBootInterface
     , dn_options :: Set.Set String
+    , dn_reexports :: Set.Set String
     }
 
 data Dep
@@ -178,6 +179,7 @@ data Deps
     , cpp :: Set.Set OsPath
     , options :: Set.Set String
     , preprocessor :: Maybe FilePath
+    , reexports :: Set.Set String
     }
     deriving stock Generic
     deriving (Monoid, Semigroup) via (Generically Deps)
@@ -216,6 +218,7 @@ instance ToJson DepJSON where
             , ("cpp", array cpp (unsafeDecodeUtf . normalise))
             , ("options", array options id)
             , ("preprocessor", maybe JSNull JSString preprocessor)
+            , ("reexports", array reexports id)
             ]
 
         package name unit_id (PackageId package_id) mods =
@@ -250,6 +253,7 @@ updateDepJSON include_pkgs preprocessor DepNode{..} deps =
             { sources = Set.singleton dn_src
             , preprocessor
             , options = dn_options
+            , reexports = dn_reexports
             }
 
     dep = \case
