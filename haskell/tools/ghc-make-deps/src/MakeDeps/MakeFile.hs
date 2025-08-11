@@ -25,6 +25,9 @@ import GHC.Driver.Ppr (showSDoc)
 import GHC.Utils.Outputable (ppr, vcat, text, nest)
 #endif
 import GHC.Driver.Config.Parser (initParserOpts)
+#if __GLASGOW_HASKELL__ > 912
+import GHC.Driver.Config.Parser (supportedLanguagePragmas)
+#endif
 import GHC.Driver.DynFlags
 import GHC.Driver.Env
 import GHC.Driver.Errors.Types
@@ -284,7 +287,15 @@ processDeps dflags _ _ _ _ _ (AcyclicSCC (InstantiationNode _uid node)) =
 
 processDeps _dflags_ _ _ _ _ _ (AcyclicSCC (LinkNode{})) =
     return ()
+#if __GLASGOW_HASKELL__ > 912
+processDeps dflags hsc_env excl_mods root hdl m_dep_json (AcyclicSCC (UnitNode _ _)) = do
+    return ()
+processDeps dflags hsc_env excl_mods root hdl m_dep_json (AcyclicSCC (ModuleNode _ (ModuleNodeFixed _ _))) = do
+    return ()
+processDeps dflags hsc_env excl_mods root hdl m_dep_json (AcyclicSCC (ModuleNode _ (ModuleNodeCompile node))) = do
+#else
 processDeps dflags hsc_env excl_mods root hdl m_dep_json (AcyclicSCC (ModuleNode _ node)) = do
+#endif
     pp <- preprocessor
     deps <-
         fmap concat
@@ -301,8 +312,11 @@ processDeps dflags hsc_env excl_mods root hdl m_dep_json (AcyclicSCC (ModuleNode
     src_file = msHsFileOsPath node
 
     popts = initParserOpts (ms_hspp_opts node)
+#if __GLASGOW_HASKELL__ > 912
+    mopts = map unLoc $ snd $ getOptions popts (supportedLanguagePragmas dflags) (fromJust $ ms_hspp_buf node) (ms_hspp_file node)
+#else
     mopts = map unLoc $ snd $ getOptions popts (fromJust $ ms_hspp_buf node) (ms_hspp_file node)
-
+#endif
     dep_node =
         DepNode
             { dn_mod = ms_mod node
@@ -430,7 +444,11 @@ writeDependencies include_pkgs root hdl suffixes node deps =
 
     DepNode{dn_src, dn_obj, dn_hi, dn_boot} = node
 
-#if __GLASGOW_HASKELL__ >= 912
+#if __GLASGOW_HASKELL__ > 912
+    addBootSuffix_maybe' IsBoot = addBootSuffix
+    addBootSuffix_maybe' NotBoot = id
+    removeBootSuffix' = removeBootSuffix
+#elif __GLASGOW_HASKELL__ >= 912
     addBootSuffix_maybe' = addBootSuffix_maybe
     removeBootSuffix' = removeBootSuffix
 #else
@@ -540,10 +558,19 @@ pprCycle :: [ModuleGraphNode] -> O.SDoc
 pprCycle summaries = pp_group (CyclicSCC summaries)
   where
     cycle_mods :: [ModuleName] -- The modules in this cycle
+#if __GLASGOW_HASKELL__ > 912
+    cycle_mods = [moduleNodeInfoModuleName ni | ModuleNode _ ni <- summaries]
+#else
     cycle_mods = [(moduleName . ms_mod) ms | ModuleNode _ ms <- summaries]
+#endif
 
     pp_group :: SCC ModuleGraphNode -> O.SDoc
+#if __GLASGOW_HASKELL__ > 912
+    pp_group (AcyclicSCC (ModuleNode _ (ModuleNodeFixed  _ _))) = error "not implemented"
+    pp_group (AcyclicSCC (ModuleNode _ (ModuleNodeCompile ms))) = pp_ms ms
+#else
     pp_group (AcyclicSCC (ModuleNode _ ms)) = pp_ms ms
+#endif
     pp_group (AcyclicSCC _) = O.empty
     pp_group (CyclicSCC mss) =
         assert (not (null boot_only))
@@ -555,12 +582,24 @@ pprCycle summaries = pp_group (CyclicSCC summaries)
             O.$$ O.vcat (map pp_group groups)
       where
         (boot_only, others) = partition is_boot_only mss
+#if __GLASGOW_HASKELL__ > 912
+        is_boot_only (ModuleNode _ (ModuleNodeCompile ms)) = not (any (in_group . snd) (ms_imps ms))
+#else
         is_boot_only (ModuleNode _ ms) = not (any (in_group . snd) (ms_imps ms))
+#endif
         is_boot_only _ = False
         in_group (L _ m) = m `elem` group_mods
+#if __GLASGOW_HASKELL__ > 912
+        group_mods = [moduleName (ms_mod ms) | ModuleNode _ (ModuleNodeCompile ms) <- mss]
+#else
         group_mods = [moduleName (ms_mod ms) | ModuleNode _ ms <- mss]
+#endif
 
+#if __GLASGOW_HASKELL__ > 912
+        loop_breaker = head ([ms | ModuleNode _ (ModuleNodeCompile ms) <- boot_only])
+#else
         loop_breaker = head ([ms | ModuleNode _ ms <- boot_only])
+#endif
         all_others = tail boot_only ++ others
         groups =
             GHC.topSortModuleGraph True (mkModuleGraph all_others) Nothing
