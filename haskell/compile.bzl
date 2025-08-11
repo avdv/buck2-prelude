@@ -5,8 +5,7 @@
 # License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 # of this source tree.
 
-load("@prelude//utils:arglike.bzl", "ArgLike")
-
+load("@prelude//:paths.bzl", "paths")
 load(
     "@prelude//cxx:preprocessor.bzl",
     "cxx_inherited_preprocessor_infos",
@@ -14,12 +13,9 @@ load(
 )
 load(
     "@prelude//haskell:library_info.bzl",
-    "HaskellLibraryProvider",
-    "HaskellLibraryInfoTSet",
-)
-load(
-    "@prelude//haskell:library_info.bzl",
     "HaskellLibraryInfo",
+    "HaskellLibraryInfoTSet",
+    "HaskellLibraryProvider",
 )
 load(
     "@prelude//haskell:link_info.bzl",
@@ -27,9 +23,9 @@ load(
 )
 load(
     "@prelude//haskell:toolchain.bzl",
-    "HaskellToolchainInfo",
     "DynamicHaskellPackageDbInfo",
     "HaskellPackageDbTSet",
+    "HaskellToolchainInfo",
     "NativeToolchainLibrary",
 )
 load(
@@ -50,7 +46,7 @@ load(
     "LinkStyle",
 )
 load("@prelude//utils:argfile.bzl", "argfile", "at_argfile")
-load("@prelude//:paths.bzl", "paths")
+load("@prelude//utils:arglike.bzl", "ArgLike")
 load("@prelude//utils:graph_utils.bzl", "post_order_traversal")
 load("@prelude//utils:strings.bzl", "strip_prefix")
 
@@ -112,12 +108,10 @@ _Module = record(
     prefix_dir = field(str),
 )
 
-
 def _strip_prefix(prefix, s):
     stripped = strip_prefix(prefix, s)
 
     return stripped if stripped != None else s
-
 
 def _modules_by_name(ctx: AnalysisContext, *, sources: list[Artifact], link_style: LinkStyle, enable_profiling: bool, suffix: str, module_prefix: str | None) -> dict[str, _Module]:
     modules = {}
@@ -152,7 +146,7 @@ def _modules_by_name(ctx: AnalysisContext, *, sources: list[Artifact], link_styl
             objects.append(object)
 
         if bootsuf == "":
-            stub_dir = ctx.actions.declare_output("stub-" + suffix + "-" + module_name, dir=True)
+            stub_dir = ctx.actions.declare_output("stub-" + suffix + "-" + module_name, dir = True)
         else:
             stub_dir = None
 
@@ -163,7 +157,8 @@ def _modules_by_name(ctx: AnalysisContext, *, sources: list[Artifact], link_styl
             interfaces = interfaces,
             objects = objects,
             stub_dir = stub_dir,
-            prefix_dir = prefix_dir)
+            prefix_dir = prefix_dir,
+        )
 
     return modules
 
@@ -194,7 +189,7 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
     ghc_args.add("-hide-all-packages")
     ghc_args.add("-i")
 
-    ghc_args.add(cmd_args(arg.toolchain_libs, prepend=package_flag))
+    ghc_args.add(cmd_args(arg.toolchain_libs, prepend = package_flag))
     ghc_args.add(cmd_args(packages_info.exposed_package_args))
     ghc_args.add(cmd_args(packages_info.packagedb_args, prepend = "-package-db"))
     ghc_args.add(arg.compiler_flags)
@@ -233,9 +228,9 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
         bp_args.add("-include-pkg-deps")
         bp_args.add(cmd_args(
             arg.external_tool_paths,
-            format="--bin-exe={}",
+            format = "--bin-exe={}",
         ))
-        bp_args.add(cmd_args(arg.toolchain_libs, prepend=package_flag))
+        bp_args.add(cmd_args(arg.toolchain_libs, prepend = package_flag))
         bp_args.add(cmd_args(packages_info.exposed_package_args))
         bp_args.add(cmd_args(packages_info.packagedb_args, prepend = "-package-db"))
         bp_args.add(arg.compiler_flags)
@@ -286,15 +281,14 @@ def target_metadata(
         *,
         sources: list[Artifact],
         suffix: str = "",
-        worker: WorkerInfo | None,
-    ) -> Artifact:
+        worker: WorkerInfo | None) -> Artifact:
     md_file = ctx.actions.declare_output(ctx.label.name + suffix + ".md.json")
     md_gen = ctx.attrs._generate_target_metadata[RunInfo]
 
     libprefix = repr(ctx.label.path).replace("//", "_").replace("/", "_")
 
     # avoid consecutive "--" in package name, which is not allowed by ghc-pkg.
-    if libprefix[-1] == '_':
+    if libprefix[-1] == "_":
         libname = libprefix + ctx.label.name
     else:
         libname = libprefix + "_" + ctx.label.name
@@ -326,7 +320,7 @@ def target_metadata(
             direct_deps_link_info = attr_deps_haskell_link_infos(ctx),
             haskell_direct_deps_lib_infos = haskell_direct_deps_lib_infos,
             haskell_toolchain = haskell_toolchain,
-            lib_package_name_and_prefix =_attr_deps_haskell_lib_package_name_and_prefix(ctx),
+            lib_package_name_and_prefix = _attr_deps_haskell_lib_package_name_and_prefix(ctx),
             md_gen = md_gen,
             sources = sources,
             external_tool_paths = [tool[RunInfo] for tool in ctx.attrs.external_tools],
@@ -452,7 +446,7 @@ def get_packages_info2(
 
     package_db_tset = actions.tset(
         HaskellPackageDbTSet,
-        children = [package_db[name] for name in toolchain_libs if name in package_db]
+        children = [package_db[name] for name in toolchain_libs if name in package_db],
     )
 
     # These we need to add for all the packages/dependencies, i.e.
@@ -483,9 +477,8 @@ CommonCompileModuleArgs = record(
 )
 
 def add_worker_args(
-    command: cmd_args,
-    pkgname: str | None,
-) -> None:
+        command: cmd_args,
+        pkgname: str | None) -> None:
     if pkgname != None:
         command.add("--worker-target-id", pkgname)
 
@@ -577,12 +570,12 @@ def _common_compile_module_args(
 
     package_db_tset = actions.tset(
         HaskellPackageDbTSet,
-        children = [package_db[name] for name in toolchain_libs if name in package_db]
+        children = [package_db[name] for name in toolchain_libs if name in package_db],
     )
 
     args_for_file.add(cmd_args(
         external_tool_paths,
-        format="--bin-exe={}",
+        format = "--bin-exe={}",
     ))
 
     packagedb_args = cmd_args(libs.project_as_args("empty_package_db"))
@@ -642,8 +635,7 @@ def _compile_module(
         src_envs: None | dict[str, ArgLike],
         source_prefixes: list[str],
         extra_libraries: list[Dependency],
-        worker: None | WorkerInfo,
-        allow_worker: bool) -> CompiledModuleTSet:
+        worker: None | WorkerInfo) -> CompiledModuleTSet:
     # These compiler arguments can be passed in a response file.
     compile_args_for_file = cmd_args(common_args.args_for_file, hidden = aux_deps or [])
 
@@ -672,7 +664,8 @@ def _compile_module(
     # as ghc exclusively looks in that directory when it is set.
     for dir in ["o", "hie", "dump"]:
         compile_args_for_file.add(
-           "-{}dir".format(dir), cmd_args([cmd_args(md_file, ignore_artifacts=True, parent=1), module.prefix_dir], delimiter="/"),
+            "-{}dir".format(dir),
+            cmd_args([cmd_args(md_file, ignore_artifacts = True, parent = 1), module.prefix_dir], delimiter = "/"),
         )
     if module.stub_dir != None:
         stubs = outputs[module.stub_dir]
@@ -707,6 +700,7 @@ def _compile_module(
         CompiledModuleTSet,
         children = exposed_package_modules,
     )
+
     # Transitive module dependencies from the same package.
     this_package_modules = [
         module_tsets[dep_name]
@@ -727,11 +721,11 @@ def _compile_module(
         for k, v in src_envs.items():
             compile_args_for_file.add(cmd_args(
                 k,
-                format="--extra-env-key={}",
+                format = "--extra-env-key={}",
             ))
             compile_args_for_file.add(cmd_args(
                 v,
-                format="--extra-env-value={}",
+                format = "--extra-env-value={}",
             ))
     if haskell_toolchain.use_argsfile:
         compile_cmd_args.append(at_argfile(
@@ -749,13 +743,12 @@ def _compile_module(
     for prefix in source_prefixes:
         compile_cmd.add(
             cmd_args(
-                cmd_args(md_file, format = "-i{}", ignore_artifacts=True, parent=1),
+                cmd_args(md_file, format = "-i{}", ignore_artifacts = True, parent = 1),
                 "/",
                 paths.join(module.prefix_dir, prefix),
-                delimiter=""
-            )
+                delimiter = "",
+            ),
         )
-
 
     compile_cmd.add(cmd_args(library_deps, prepend = "-package"))
     compile_cmd.add(cmd_args(toolchain_deps, prepend = "-package"))
@@ -789,14 +782,16 @@ def _compile_module(
     worker_args = dict() if worker == None else dict(exe = WorkerRunInfo(worker = worker))
 
     actions.run(
-        compile_cmd, category = "haskell_compile_" + artifact_suffix.replace("-", "_"), identifier = module_name,
+        compile_cmd,
+        category = "haskell_compile_" + artifact_suffix.replace("-", "_"),
+        identifier = module_name,
         dep_files = {
             "abi": abi_tag,
             "packagedb": packagedb_tag,
         },
         # explicit turn this on for local_only actions to upload their results.
         allow_cache_upload = True,
-        **worker_args,
+        **worker_args
     )
 
     module_tset = actions.tset(
@@ -839,7 +834,7 @@ def _dynamic_do_compile_impl(actions, md_file, pkg_deps, arg, direct_deps_by_nam
     graph = md["module_graph"]
     package_deps = md["package_deps"]
 
-    mapped_modules = { module_map.get(k, k): v for k, v in arg.modules.items() }
+    mapped_modules = {module_map.get(k, k): v for k, v in arg.modules.items()}
     module_tsets = {}
     source_prefixes = get_source_prefixes(arg.sources, module_map)
 
@@ -872,13 +867,11 @@ def _dynamic_do_compile_impl(actions, md_file, pkg_deps, arg, direct_deps_by_nam
 
     return [DynamicCompileResultInfo(modules = module_tsets)]
 
-
-
 _dynamic_do_compile = dynamic_actions(
     impl = _dynamic_do_compile_impl,
     attrs = {
-        "md_file" : dynattrs.artifact_value(),
-        "arg" : dynattrs.value(typing.Any),
+        "md_file": dynattrs.artifact_value(),
+        "arg": dynattrs.value(typing.Any),
         "pkg_deps": dynattrs.option(dynattrs.dynamic_value()),
         "outputs": dynattrs.dict(Artifact, dynattrs.output()),
         "direct_deps_by_name": dynattrs.dict(str, dynattrs.tuple(dynattrs.value(Artifact), dynattrs.dynamic_value())),
@@ -950,12 +943,13 @@ def compile(
         ),
     ))
 
-    stubs_dir = ctx.actions.declare_output("stubs-" + artifact_suffix, dir=True)
+    stubs_dir = ctx.actions.declare_output("stubs-" + artifact_suffix, dir = True)
 
     # collect the stubs from all modules into the stubs_dir
     if ctx.attrs.use_argsfile_at_link:
         stub_copy_cmd = cmd_args([
-            "bash", "-euc",
+            "bash",
+            "-euc",
             """\
             mkdir -p \"$0\"
             cat $1 | while read stub; do
@@ -972,7 +966,8 @@ def compile(
         ))
     else:
         stub_copy_cmd = cmd_args([
-            "bash", "-euc",
+            "bash",
+            "-euc",
             """\
             mkdir -p \"$0\"
             for stub; do
