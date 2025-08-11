@@ -192,6 +192,7 @@ def _dynamic_target_metadata_impl(actions, output, arg, pkg_deps) -> list[Provid
     ghc_args = cmd_args(format = "--ghc-arg={}", relative_to = arg.cell_root)
     ghc_args.add("-j")
     ghc_args.add("-hide-all-packages")
+    ghc_args.add("-i")
 
     ghc_args.add(cmd_args(arg.toolchain_libs, prepend=package_flag))
     ghc_args.add(cmd_args(packages_info.exposed_package_args))
