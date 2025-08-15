@@ -147,7 +147,7 @@ def obtain_target_metadata(args):
     exposed_modules = determine_exposed_modules(ghc_depends)
     th_modules = determine_th_modules(ghc_depends)
     module_mapping = determine_module_mapping(ghc_depends, args.source_prefix)
-    module_graph = determine_module_graph(ghc_depends)
+    module_graph, reexports = determine_module_graph(ghc_depends)
     package_deps = determine_package_deps(ghc_depends)
     return {
         "exposed_modules": exposed_modules,
@@ -159,6 +159,7 @@ def obtain_target_metadata(args):
         # persistent worker in order to restore the state from cache.
         "build_plan": ghc_depends,
         "unit_args": args.unit_args,
+        "reexports": reexports,
     }
 
 
@@ -221,13 +222,15 @@ def determine_module_mapping(ghc_depends, source_prefix):
 
 def determine_module_graph(ghc_depends):
     module_deps = {}
+    reexports = {}
     for modname, description in ghc_depends.items():
         deps = set(description.get("modules", []) + [
             dep + "-boot"
             for dep in description.get("modules-boot", [])
         ])
 
-        deps |= set(mod for mod in description["reexports"] if mod in ghc_depends)
+        reexports[modname] = sorted(mod for mod in description["reexports"] if mod in ghc_depends)
+        deps |= set(reexports[modname])
 
         module_deps[modname] = sorted(deps)
 
@@ -238,7 +241,7 @@ def determine_module_graph(ghc_depends):
                 for dep in boot_description.get("modules-boot", [])
             ]
 
-    return module_deps
+    return module_deps, reexports
 
 
 def determine_package_deps(ghc_depends):
