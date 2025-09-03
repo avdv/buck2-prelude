@@ -229,8 +229,7 @@ def determine_module_graph(ghc_depends):
             for dep in description.get("modules-boot", [])
         ])
 
-        reexports[modname] = sorted(mod for mod in description["reexports"] if mod in ghc_depends)
-        deps |= set(reexports[modname])
+        reexports[modname] = sorted(description["reexports"])
 
         module_deps[modname] = sorted(deps)
 

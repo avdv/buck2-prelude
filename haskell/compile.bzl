@@ -1018,6 +1018,7 @@ def _compile_module(
         md_file: Artifact,
         graph: dict[str, list[str]],
         package_deps: dict[str, list[str]],
+        reexports: list[str],
         outputs: dict[Artifact, OutputArtifact],
         artifact_suffix: str,
         direct_deps_by_name: dict[str, typing.Any],
@@ -1071,7 +1072,7 @@ def _compile_module(
 
     tagged_dep_file = interface_tag.tag_artifacts(dep_file)
 
-    hash = actions.declare_output("{}_{}.hash".format(module_name, artifact_suffix))
+    hash = actions.declare_output("{}_{}.hash".format(pkgname, module_name))
 
     # ----------------------------------------------------------------------------------------------------
 
@@ -1209,7 +1210,7 @@ def _compile_module(
 
 # Compile incrementally and fill module_tsets accordingly.
 def _compile_incr(
-        actions,
+        actions: AnalysisActions,
         module_tsets,
         arg,
         common_args,
@@ -1217,8 +1218,13 @@ def _compile_incr(
         mapped_modules,
         th_modules,
         package_deps,
+        reexports: dict[str, list[str]],
         direct_deps_by_name,
         outputs) -> None:
+    print(reexports)
+
+    # if a dependency contains a reexported module
+    # we should add a dependency on the abi file of that module.
     for module_name in post_order_traversal(graph):
         module = mapped_modules[module_name]
         module_tsets[module_name] = _compile_module(
@@ -1237,6 +1243,7 @@ def _compile_incr(
             module_tsets = module_tsets,
             graph = graph,
             package_deps = package_deps.get(module_name, {}),
+            reexports = reexports[module_name],
             outputs = outputs,
             md_file = arg.md_file,
             artifact_suffix = arg.artifact_suffix,
@@ -1530,6 +1537,7 @@ def _dynamic_do_compile_impl(actions, incremental, md_file, pkg_deps, arg, direc
     module_map = md["module_mapping"]
     graph = md["module_graph"]
     package_deps = md["package_deps"]
+    reexports = md["reexports"]
 
     mapped_modules = {module_map.get(k, k): v for k, v in arg.modules.items()}
     module_tsets = {}
@@ -1544,6 +1552,7 @@ def _dynamic_do_compile_impl(actions, incremental, md_file, pkg_deps, arg, direc
             mapped_modules,
             th_modules,
             package_deps,
+            reexports,
             direct_deps_by_name,
             outputs,
         )
