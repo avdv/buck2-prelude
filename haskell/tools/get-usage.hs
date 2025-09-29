@@ -17,6 +17,8 @@ import System.Exit (exitFailure)
 getInterface ifaceFile = do
   let profile = Profile { profilePlatform = genericPlatform, profileWays = Set.empty }
 
+  -- TODO initNameCache is deprecated, newNameCache is available with GHC > 9.12.x
+  -- name_cache <- newNameCache
   name_cache <- initNameCache 'x' []
 
   -- Load the interface file
