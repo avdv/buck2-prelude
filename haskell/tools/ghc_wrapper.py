@@ -100,6 +100,9 @@ def main():
 
     args, ghc_args = parser.parse_known_args()
 
+    # determine the main output interface file
+    iface = get_ghc_arg(ghc_args, name = "-ohi", required=False)
+        
     if args.worker_close:
         print("worker-close is called", file=sys.stderr)
         print("close_input = {}".format(args.close_input))
@@ -145,7 +148,8 @@ def main():
     if returncode != 0:
         return returncode
 
-    recompute_abi_hash(args.ghc, args.abi_out, use_persistent_workers)
+    if iface:
+        recompute_abi_hash(args.ghc, iface, args.abi_out, use_persistent_workers)
 
     if args.buck2_dep:
         # write an empty dep file, to signal that all tagged files are unused
@@ -175,10 +179,19 @@ def main():
     return 0
 
 
-def recompute_abi_hash(ghc, abi_out, use_persistent_workers):
+def get_ghc_arg(ghc_args, *, name, required):
+    for i, arg in enumerate(ghc_args):
+        if arg == name:
+            return ghc_args[i + 1]
+    if required:
+       sys.exit(f"error: missing required `{name}` argument") 
+
+    return None
+
+
+def recompute_abi_hash(ghc, hi_file, abi_out, use_persistent_workers):
     """Call ghc on the hi file and write the ABI hash to abi_out."""
     if abi_out:
-        hi_file = abi_out.with_suffix("")
         if use_persistent_workers:
             worker_args = ["--worker-target-id=show-iface-abi-hash"]
         else:
