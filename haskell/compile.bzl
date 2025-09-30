@@ -53,6 +53,7 @@ load("@prelude//utils:argfile.bzl", "argfile", "at_argfile")
 load("@prelude//utils:arglike.bzl", "ArgLike")
 load("@prelude//utils:graph_utils.bzl", "post_order_traversal")
 load("@prelude//utils:strings.bzl", "strip_prefix")
+load("@prelude//utils:utils.bzl", "dedupe_by_value")
 
 CompiledModuleInfo = provider(fields = {
     "name": provider_field(str),
@@ -63,12 +64,6 @@ CompiledModuleInfo = provider(fields = {
     "db_deps": provider_field(list[Artifact]),
     "package": provider_field(str),
 })
-
-def _compiled_module_project_as_abi(mod: CompiledModuleInfo) -> cmd_args:
-    if mod.abi:
-        return cmd_args(mod.abi)
-    else:
-        return cmd_args()
 
 def _compiled_module_project_as_interfaces(mod: CompiledModuleInfo) -> cmd_args:
     return cmd_args(mod.interfaces)
@@ -91,7 +86,6 @@ def _compiled_module_json_as_dep_modules(mod: CompiledModuleInfo) -> struct:
 
 CompiledModuleTSet = transitive_set(
     args_projections = {
-        "abi": _compiled_module_project_as_abi,
         "interfaces": _compiled_module_project_as_interfaces,
         "hie_files": _compiled_module_project_as_hie_files,
     },
@@ -1062,6 +1056,8 @@ def _compile_module(
     ]
 
     all_deps = exposed_package_modules + this_package_modules
+
+    direct_abi_hashes = dedupe_by_value([compiled.value.abi for compiled in all_deps if compiled.value])
 
     dependency_modules = actions.tset(
         CompiledModuleTSet,
