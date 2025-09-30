@@ -1018,7 +1018,7 @@ def _compile_module(
         md_file: Artifact,
         graph: dict[str, list[str]],
         package_deps: dict[str, list[str]],
-        reexports: list[str],
+        reexports: dict[str, list[str]],
         outputs: dict[Artifact, OutputArtifact],
         artifact_suffix: str,
         direct_deps_by_name: dict[str, typing.Any],
@@ -1058,9 +1058,15 @@ def _compile_module(
         for dep_name in graph[module_name]
     ]
 
+    reexported_modules = [
+        module_tsets[reexport]
+        for dep_name in graph[module_name]
+        for reexport in reexports[dep_name]
+    ]
+
     all_deps = exposed_package_modules + this_package_modules
 
-    direct_abi_hashes = dedupe_by_value([compiled.value.abi for compiled in all_deps if compiled.value])
+    direct_abi_hashes = dedupe_by_value([compiled.value.abi for compiled in all_deps + reexported_modules if compiled.value])
 
     dependency_modules = actions.tset(
         CompiledModuleTSet,
@@ -1221,8 +1227,6 @@ def _compile_incr(
         reexports: dict[str, list[str]],
         direct_deps_by_name,
         outputs) -> None:
-    print(reexports)
-
     # if a dependency contains a reexported module
     # we should add a dependency on the abi file of that module.
     for module_name in post_order_traversal(graph):
@@ -1243,7 +1247,7 @@ def _compile_incr(
             module_tsets = module_tsets,
             graph = graph,
             package_deps = package_deps.get(module_name, {}),
-            reexports = reexports[module_name],
+            reexports = reexports,
             outputs = outputs,
             md_file = arg.md_file,
             artifact_suffix = arg.artifact_suffix,
