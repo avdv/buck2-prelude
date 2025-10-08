@@ -1268,6 +1268,7 @@ def compile_args(
     # Some rules pass in RTS (e.g. `+RTS ... -RTS`) options for GHC, which can't
     # be parsed when inside an argsfile.
     compile_cmd.add(compiler_flags)
+    compile_cmd.add("-fwrite-ide-info")
 
     # extra-libraries
     extra_libs = [
@@ -1363,8 +1364,6 @@ def compile_args(
         arg_srcs,
         hidden = hidden_srcs,
     )
-
-    producing_indices = "-fwrite-ide-info" in compiler_flags
 
     return CompileArgsInfo(
         srcs = srcs,
