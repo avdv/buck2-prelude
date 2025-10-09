@@ -1040,6 +1040,8 @@ def _compile_module(
 
     toolchain_deps = []
     library_deps = []
+
+    # Transitive module dependencies from other packages.
     exposed_package_modules = []
     exposed_package_dbs = []
     for dep_pkgname, dep_modules in package_deps.items():
@@ -1053,21 +1055,17 @@ def _compile_module(
         else:
             fail("Unknown library dependency '{}' for module '{}'. Add the library to the `deps` attribute".format(dep_pkgname, module_name))
 
-    # Transitive module dependencies from other packages.
-    cross_package_modules = actions.tset(
-        CompiledModuleTSet,
-        children = exposed_package_modules,
-    )
-
     # Transitive module dependencies from the same package.
     this_package_modules = [
         module_tsets[dep_name]
         for dep_name in graph[module_name]
     ]
 
+    all_deps = exposed_package_modules + this_package_modules
+
     dependency_modules = actions.tset(
         CompiledModuleTSet,
-        children = [cross_package_modules] + this_package_modules,
+        children = all_deps,
     )
 
     dep_file = actions.declare_output("dep-{}_{}".format(module_name, artifact_suffix)).as_output()
@@ -1200,7 +1198,7 @@ def _compile_module(
             hie_files = module.hie_files,
             db_deps = exposed_package_dbs,
         ),
-        children = [cross_package_modules] + this_package_modules,
+        children = all_deps,
     )
 
     return module_tset
@@ -1384,6 +1382,7 @@ def _make_module_tsets_non_incr(
     toolchain_deps = []
     library_deps = []
 
+    # Transitive module dependencies from other packages.
     exposed_package_modules = []
     exposed_package_dbs = []
 
@@ -1398,12 +1397,6 @@ def _make_module_tsets_non_incr(
         else:
             fail("Unknown library dependency '{}'. Add the library to the `deps` attribute".format(dep_pkgname))
 
-   # Transitive module dependencies from other packages.
-    cross_package_modules = actions.tset(
-        CompiledModuleTSet,
-        children = exposed_package_modules,
-    )
-
     module_tsets = actions.tset(
         CompiledModuleTSet,
         value = CompiledModuleInfo(
@@ -1414,7 +1407,7 @@ def _make_module_tsets_non_incr(
             hie_files = module.hie_files,
             db_deps = exposed_package_dbs,
         ),
-        children = [cross_package_modules],
+        children = exposed_package_modules,
     )
     return module_tsets
 
