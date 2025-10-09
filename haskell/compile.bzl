@@ -60,6 +60,7 @@ CompiledModuleInfo = provider(fields = {
     "abi": provider_field(Artifact | None),
     "interfaces": provider_field(list[Artifact]),
     "hie_files": provider_field(list[Artifact]),
+    "reexports": provider_field(list[str]),
     # TODO[AH] track this module's package-name/id & package-db instead.
     "db_deps": provider_field(list[Artifact]),
     "package": provider_field(str),
@@ -79,6 +80,21 @@ def _compiled_module_reduce_as_packagedb_deps(children: list[dict[Artifact, None
         result.update(child)
     return result
 
+ReexportInfo = record(
+    abi = field(dict[str, Artifact]),
+    reexports = field(dict[str, None]),
+)
+
+def _compiled_module_reduce_reexports(children: list[ReexportInfo], mod: CompiledModuleInfo | None) -> ReexportInfo:
+    result = ReexportInfo(abi = {}, reexports = {})
+    for item in children:
+        result.abi.update(item.abi)
+        result.reexports.update(item.reexports)
+    if mod:
+        result.abi[mod.name] = mod.abi
+        result.reexports.update({k: None for k in mod.reexports})
+    return result
+
 # Used by the persistent worker in the compile action to restore the target module's transitive dependencies from cache
 # into the home package tables of the respective units.
 def _compiled_module_json_as_dep_modules(mod: CompiledModuleInfo) -> struct:
@@ -91,6 +107,7 @@ CompiledModuleTSet = transitive_set(
     },
     reductions = {
         "packagedb_deps": _compiled_module_reduce_as_packagedb_deps,
+        "reexports": _compiled_module_reduce_reexports,
     },
     json_projections = {
         "dep_modules": _compiled_module_json_as_dep_modules,
@@ -1058,21 +1075,22 @@ def _compile_module(
         for dep_name in graph[module_name]
     ]
 
-    reexported_modules = [
-        module_tsets[reexport]
-        for dep_name in graph[module_name]
-        for reexport in reexports[dep_name]
-    ]
-
     all_deps = exposed_package_modules + this_package_modules
-
-    direct_abi_hashes = dedupe_by_value([compiled.value.abi for compiled in all_deps + reexported_modules if compiled.value])
 
     dependency_modules = actions.tset(
         CompiledModuleTSet,
         children = all_deps,
     )
-    tagged_hash_files = hash_tag.tag_artifacts(dependency_modules.project_as_args("abi"))
+
+    dependency_reexports = dependency_modules.reduce("reexports")
+
+    reexported_modules = [dependency_reexports.abi[m] for m in dependency_reexports.reexports.keys() if m in dependency_reexports.abi]
+
+    direct_abi_hashes = [compiled.value.abi for compiled in all_deps]
+
+    potential_reexport_abi_hashes = [m for m in reexported_modules if m not in direct_abi_hashes]
+
+    tagged_hash_files = hash_tag.tag_artifacts(cmd_args(potential_reexport_abi_hashes))
 
     dep_file = actions.declare_output("dep-{}_{}".format(module_name, artifact_suffix)).as_output()
 
@@ -1091,6 +1109,7 @@ def _compile_module(
     compile_cmd_args = [common_args.command, cmd_args(tagged_hash_files, prepend = "--abi")]
     compile_cmd_hidden = [
         interface_tag.tag_artifacts(dependency_modules.project_as_args("interfaces")),
+        direct_abi_hashes,
     ]
 
     # For the make worker, options related to local package dependencies need to be omitted entirely, since it uses the
@@ -1205,6 +1224,7 @@ def _compile_module(
             package = common_args.pkgname,
             name = module.name,
             abi = hash,
+            reexports = reexports[module_name],
             interfaces = module.interfaces,
             hie_files = module.hie_files,
             db_deps = exposed_package_dbs,
@@ -1419,6 +1439,7 @@ def _make_module_tsets_non_incr(
             name = name,
             package = pkgname,
             abi = None,
+            reexports = [],
             interfaces = module.interfaces,
             hie_files = module.hie_files,
             db_deps = exposed_package_dbs,
